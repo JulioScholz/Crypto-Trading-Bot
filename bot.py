@@ -312,28 +312,24 @@ def build_dict(data_mn,dDict):
 
     return newdict
 
-def backtest(client):
+def generate_db_backtest(client):
     global p
-    generatedb = False
-
     
     coins = ('BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','ADAUSDT','XRPUSDT','DOTUSDT', 'DOGEUSDT','SHIBUSDT','EOSUSDT')
     #data = getminutedata_v2(client,p.TRADE_PAIR,interval='5m',lookback='1',daterange= 'days ago UTC')
     #print (data)
     engine = create_engine('sqlite:///Cryptoprices.db')
-    if generatedb is True:
-        for coin in tqdm(coins):
-            getminutedata_v2(client,coin,interval='1m',lookback='30',daterange= 'days ago UTC').to_sql(coin,engine,index=False)
+   
+    for coin in tqdm(coins):
+        getminutedata_v2(client,coin,interval='1m',lookback='30',daterange= 'days ago UTC').to_sql(coin,engine,index=False)
     #print(sql.inspect(engine).get_table_names())
-    test = pd.read_sql('EOSUSDT',engine)
-    print(test)
 def main():
     
     global it
     global p
-    #send_gsheets(['tempo','user','lado','20 un','5 real'])
-    
-    inicio = datetime.now()#.strftime("%Y-%m-%d %H:%M:%S")
+    generatedb = False
+
+    inicio = datetime.now()
     client = setup_client()
     info = client.get_account()
     assests =  getAssets(info)
@@ -343,8 +339,13 @@ def main():
     if argv:
         if argv[0] == 'ass':  
             quit()
+    if p.BACKTEST is True:
+        engine = create_engine('sqlite:///Cryptoprices.db')
+        if generatedb is True:
+            generate_db_backtest(client)
 
-    backtest(client)
+        dataTest = pd.read_sql(p.TRADE_PAIR,engine)
+        dataTest = dataTest.set_index('Time')
     #quit()
     #print(client.get_symbol_info(p.TRADE_PAIR))
     #sys.exit()
@@ -359,13 +360,16 @@ def main():
     try:
         while keep_runnig is True:
            
-            data_mn = getminutedata(client,p.TRADE_PAIR,interval='5m',lookback='100')
-            if data_mn is None :
-                client = setup_client()
+            if p.BACKTEST is False:
                 data_mn = getminutedata(client,p.TRADE_PAIR,interval='5m',lookback='100')
-                if data_mn is None:
-                    break;
-
+                if data_mn is None :
+                    client = setup_client()
+                    data_mn = getminutedata(client,p.TRADE_PAIR,interval='5m',lookback='100')
+                    if data_mn is None:
+                        break;
+            elif p.BACKTEST is True:
+                data_mn = dataTest.iloc[it:it+100]
+                
             curr_price = float(data_mn['Close'].iloc[-1])
             qty = p.AVAILABLE_MONEY / curr_price
             qty = round(qty,8)
@@ -383,7 +387,6 @@ def main():
             if result <= p.BUY_THRESHOLD and open_position is False:
                 qty = p.AVAILABLE_MONEY / float(curr_price)
                 qty = round(qty,8)
-                print(qty)
                 
                 if p.TEST_REAL is False:
                     print("ALERTA VOU COMPRAR!")
@@ -468,13 +471,15 @@ def main():
                                 "commissionAsset": "USDT"}]
                                 }
                         try:
-                            order = client.create_test_order(symbol=p.TRADE_PAIR, side='SELL', type='MARKET', quantity=qty_exec)
+                            #order = client.create_test_order(symbol=p.TRADE_PAIR, side='SELL', type='MARKET', quantity=qty_exec)
                         
                             sellprice = float(order['fills'][0]['price'])
                             qty_exec = order['fills'][0]['qty']
                             fee = order['fills'][0]['commission']
+                            profit = sellprice - buyprice
+                            print(f'Profit: {profit}')
                             #Time,Side,Amount,Price
-                            fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'SELL', str(qty_exec),'-' + str(sellprice), str(fee)]
+                            fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'SELL', str(qty_exec), str(sellprice), str(fee)]
                             send_gsheets(fields)
                             open_position = False
                         except Exception as e:
@@ -487,10 +492,11 @@ def main():
                 print("\nyou pressed Esc, so exiting...")
                 keep_runnig = False
 
-            if open_position is True:
-                time.sleep(5)
-            else:
-                time.sleep(10)
+            if p.BACKTEST is False:
+                if open_position is True:
+                    time.sleep(5)
+                else:
+                    time.sleep(10)
 
             #keep_runnig = False
     except KeyboardInterrupt:

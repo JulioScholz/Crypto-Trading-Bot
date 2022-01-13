@@ -7,18 +7,19 @@ class paraClass:
         config.read_file( open(str(  pathlib.Path(__file__).parent.resolve())  +  '\config.ini') )
 
         P = 'PARAMETERS'
-        self.TEST =           bool(config['APP'].getboolean('TEST'))
-        self.TEST_REAL =      bool(config['APP'].getboolean('TEST_REAL'))
-        self.USER = config['APP']['USER']
-        self.INTERVAL = config['APP']['INTERVAL']
+        self.TEST =         bool(config['APP'].getboolean('TEST'))
+        self.TEST_REAL =    bool(config['APP'].getboolean('TEST_REAL'))
+        self.BACKTEST =     bool(config['APP'].getboolean('BACKTEST'))
+        self.USER =         config['APP']['USER']
+        self.INTERVAL =     config['APP']['INTERVAL']
         self.SELL_THRESHOLD = float(config['APP']['SELL_THRESHOLD'])
         self.BUY_THRESHOLD =  float(config['APP']['BUY_THRESHOLD'])
-        self.STOP_LOSS = float(config['APP']['STOP_LOSS'])
-        self.STOP_GAIN = float(config['APP']['STOP_GAIN'])
+        self.STOP_LOSS =    float(config['APP']['STOP_LOSS'])
+        self.STOP_GAIN =    float(config['APP']['STOP_GAIN'])
 
-        self.TRADE_COIN =    config['ASSESTS']['TRADE_COIN'] 
-        self.TRADE_MONEY =   config['ASSESTS']['TRADE_MONEY']
-        self.TRADE_PAIR =  self.TRADE_COIN + self.TRADE_MONEY
+        self.TRADE_COIN =   config['ASSESTS']['TRADE_COIN'] 
+        self.TRADE_MONEY =  config['ASSESTS']['TRADE_MONEY']
+        self.TRADE_PAIR =   self.TRADE_COIN + self.TRADE_MONEY
         self.AVAILABLE_MONEY = float(config['ASSESTS']['AVAILABLE_MONEY'])
 
         self.RSI_LENGTH =    int(config[P]['RSI_LENGTH'])
