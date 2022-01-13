@@ -324,6 +324,16 @@ def generate_db_backtest(client):
     for coin in tqdm(coins):
         getminutedata_v2(client,coin,interval='1m',lookback='30',daterange= 'days ago UTC').to_sql(coin,engine,index=False)
     #print(sql.inspect(engine).get_table_names())
+
+def print_openposition(curr_price,buyprice):
+    ot_table = Table()
+    ot_table.add_column('[blue]Close')
+    ot_table.add_column('[cyan]Buy Price')
+    ot_table.add_column('[green]Target')
+    ot_table.add_column('[red]Stop')
+    ot_table.add_row(str(curr_price),str(buyprice),str(buyprice * p.STOP_GAIN),str(buyprice * p.STOP_LOSS) )
+    print_all(ot_table,False)
+
 def main():
     
     global it
@@ -415,19 +425,23 @@ def main():
                         "commissionAsset": "USDT"}]}
                     try:
 
-                        print(order)
+                        #print(order)
+                        
                         if 'fills' in order:
                             if order['fills'] != []:
                                 buyprice = float(order['fills'][0]['price'])
                                 qty_exec = order['fills'][0]['qty']
                                 qty_exec = round(qty_exec,8)
                                 fee = order['fills'][0]['commission']
+                                profit = profit - fee
                                 open_position = True
                                 #Time,Side,Amount,Price
                                 if p.BACKTEST is False:
                                     fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'BUY', str(qty_exec),'-' + str(buyprice), str(fee)]
                                     send_gsheets(fields)
                                 its = 5
+
+                               
                     except Exception as e:
                         print(e)
 
@@ -437,17 +451,10 @@ def main():
                 curr_price =float(df.Close.iloc[-1] )
                 if p.BACKTEST is False:
                     if its % 5 == 0:
-                        ot_table = Table()
-                        
-                        ot_table.add_column('[blue]Close')
-                        ot_table.add_column('[cyan]Buy Price')
-                        ot_table.add_column('[green]Target')
-                        ot_table.add_column('[red]Stop')
-                        ot_table.add_row(str(curr_price),str(buyprice),str(buyprice * p.STOP_GAIN),str(buyprice * p.STOP_LOSS) )
-                        
-                        print_all(ot_table,False)
+                        print_openposition(curr_price,buyprice)
                         its = 0
                     its = its + 1
+
                 if result > p.SELL_THRESHOLD or curr_price <= buyprice * p.STOP_LOSS or curr_price >= p.STOP_GAIN * buyprice:
                     if p.TEST_REAL is False:
                         print("ALERTA VOU COMPRAR!")
@@ -474,15 +481,19 @@ def main():
                                 "commission": (curr_price*qty*0.00075),
                                 "commissionAsset": "USDT"}]
                                 }
+                        
                         try:
                             #order = client.create_test_order(symbol=p.TRADE_PAIR, side='SELL', type='MARKET', quantity=qty_exec)
                         
                             sellprice = float(order['fills'][0]['price'])
                             qty_exec = order['fills'][0]['qty']
                             fee = order['fills'][0]['commission']
-                            profit += sellprice - buyprice
+                            
+                            profit += ((sellprice*qty_exec) - (buyprice*qty )) - fee
+                            p.set_ava_money((sellprice*qty_exec))
+
                             print(f'Profit: {profit}')
-                            #Time,Side,Amount,Price
+
                             if p.BACKTEST is False:
                                 fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'SELL', str(qty_exec), str(sellprice), str(fee)]
                                 send_gsheets(fields)
@@ -501,7 +512,9 @@ def main():
                     time.sleep(5)
                 else:
                     time.sleep(10)
-
+            else:
+                if it+100 == dataTest.shape[0]:
+                    keep_runnig = False
             #keep_runnig = False
     except KeyboardInterrupt:
         print('Closing the connection!')

@@ -1,6 +1,7 @@
 build/
 __pycache__/
 .vscode/
-/secret
 old/
 *.db
+secret.ini
+/secret.ini

@@ -43,3 +43,6 @@ class paraClass:
         self.MACD_SLOW   =  int(config[P]['MACD_SLOW'])
         self.MACD_SIGNAL =  int(config[P]['MACD_SIGNAL'])
         self.MACD_WEIGHT =  float(config[P]['MACD_WEIGHT'] )
+
+    def set_ava_money(self,money):
+        self.AVAILABLE_MONEY = money
