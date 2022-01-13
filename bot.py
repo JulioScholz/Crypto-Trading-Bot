@@ -319,10 +319,10 @@ def generate_db_backtest(client):
     coins = ('BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','ADAUSDT','XRPUSDT','DOTUSDT', 'DOGEUSDT','SHIBUSDT','EOSUSDT')
     #data = getminutedata_v2(client,p.TRADE_PAIR,interval='5m',lookback='1',daterange= 'days ago UTC')
     #print (data)
-    engine = create_engine('sqlite:///Cryptoprices.db')
+    engine = create_engine('sqlite:///Cryptopricesnew.db')
    
     for coin in tqdm(coins):
-        getminutedata_v2(client,coin,interval='1m',lookback='30',daterange= 'days ago UTC').to_sql(coin,engine,index=False)
+        getminutedata_v2(client,coin,interval=p.INTERVAL,lookback='90',daterange= 'days ago UTC').to_sql(coin,engine,index=False)
     #print(sql.inspect(engine).get_table_names())
 
 def print_openposition(curr_price,buyprice):
@@ -338,8 +338,10 @@ def main():
     
     global it
     global p
-    generatedb = False
 
+    start_money = p.AVAILABLE_MONEY
+    generatedb = False
+    operacao = 0
     inicio = datetime.now()
     client = setup_client()
     info = client.get_account()
@@ -351,7 +353,7 @@ def main():
         if argv[0] == 'ass':  
             quit()
     if p.BACKTEST is True:
-        engine = create_engine('sqlite:///Cryptoprices.db')
+        engine = create_engine('sqlite:///Cryptoprices'+ p.INTERVAL+'.db')
         if generatedb is True:
             generate_db_backtest(client)
 
@@ -379,7 +381,7 @@ def main():
                     if data_mn is None:
                         break;
             elif p.BACKTEST is True:
-                data_mn = dataTest.iloc[it:it+100]
+                data_mn = dataTest.iloc[it:it+50]
                 
             curr_price = float(data_mn['Close'].iloc[-1])
             qty = p.AVAILABLE_MONEY / curr_price
@@ -476,10 +478,10 @@ def main():
                                 "type": "MARKET",
                                 "side": "SELL",
                                 "fills": [
-                                {"price": curr_price,
-                                "qty": qty,
-                                "commission": (curr_price*qty*0.00075),
-                                "commissionAsset": "USDT"}]
+                                        {"price": curr_price,
+                                        "qty": qty,
+                                        "commission": (curr_price*qty*0.00075),
+                                        "commissionAsset": "USDT"}]
                                 }
                         
                         try:
@@ -489,10 +491,13 @@ def main():
                             qty_exec = order['fills'][0]['qty']
                             fee = order['fills'][0]['commission']
                             
-                            profit += ((sellprice*qty_exec) - (buyprice*qty )) - fee
-                            p.set_ava_money((sellprice*qty_exec))
-
-                            print(f'Profit: {profit}')
+                            #profit += ((sellprice*qty_exec) - (buyprice*qty )) - fee
+                            
+                            #p.set_ava_money((sellprice*qty_exec))
+                            p.set_ava_money(p.AVAILABLE_MONEY + ((sellprice*qty_exec) - (buyprice*qty )) - fee)
+                            profit =  p.AVAILABLE_MONEY  - start_money
+                            operacao += 1
+                            print(f'it: {it}. op {operacao}. Profit: {profit} - Av Money: {p.AVAILABLE_MONEY}')
 
                             if p.BACKTEST is False:
                                 fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'SELL', str(qty_exec), str(sellprice), str(fee)]
