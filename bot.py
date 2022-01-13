@@ -1,19 +1,20 @@
 from binance import Client
+
 import numpy as np
 import pandas as pd
 import pandas_ta as pta
-import json, configparser, pathlib, time, requests, copy, sys, os, keyboard
-from configupdater import ConfigUpdater
-from parameters import paraClass as para
 
+import json, configparser, pathlib, time, requests, copy, sys, os, keyboard
+from tqdm import tqdm
+from parameters import paraClass as para
+from configupdater import ConfigUpdater
 from datetime import datetime
 from rich import print
 from rich.table import Table
-
 from rich.live import Live
-
 from rich.align import Align
-
+#import sqlalchemy as sql
+from sqlalchemy import create_engine
 def eula():
 
     print(  "\nDeclaração de exoneração de responsabilidade\n\n" +
@@ -52,9 +53,9 @@ def setup_client():
 
     return client
     
-def getminutedata(client,symbol, interval='1m', lookback='120'):
+def getminutedata(client,symbol, interval='1m', lookback='120', daterange = ' min ago UTC' ):
     try :
-        frame = pd.DataFrame( client.get_historical_klines (symbol, interval, lookback + ' min ago UTC'))
+        frame = pd.DataFrame( client.get_historical_klines (symbol, interval, lookback + daterange))
         frame = frame.iloc[:,:6]
         frame.columns = ['Time', 'Open', 'High', 'Low', 'Close', 'Volume']
         frame['Time'] = pd.to_datetime(frame['Time'], unit='ms')
@@ -69,6 +70,18 @@ def getminutedata(client,symbol, interval='1m', lookback='120'):
     except requests.exceptions.ReadTimeout :
         print('Something went wrong. Error occured at %s.' % (datetime.datetime.now()))
         return None
+
+def getminutedata_v2(client,symbol, interval='1m', lookback='120', daterange = ' min ago UTC' ):
+        frame = pd.DataFrame( client.get_historical_klines (symbol, interval, lookback + daterange))
+        frame = frame.iloc[:,:5]
+        frame.columns = ['Time', 'Open', 'High', 'Low', 'Close']
+        frame['Time'] = pd.to_datetime(frame['Time'], unit='ms')
+        frame['Time'] -= pd.Timedelta(hours=3)
+
+        for col in  ['Open', 'High', 'Low', 'Close']:
+            frame[col] = frame[col].astype(float)
+
+        return frame
 
 def get_ticker(symbol):
     try:        
@@ -116,7 +129,6 @@ def generate_table(dict_) -> Table:
     dict1 = copy.copy(dict_)
     """Make a new table."""
     
-
     my_dict = json.loads(json.dumps(dict1), parse_int=str,parse_float=str)
     table = Table()
     table = Table(title=":money_with_wings: [bright_yellow]EL TRADER BOT :money_with_wings:" )
@@ -300,6 +312,21 @@ def build_dict(data_mn,dDict):
 
     return newdict
 
+def backtest(client):
+    global p
+    generatedb = False
+
+    
+    coins = ('BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','ADAUSDT','XRPUSDT','DOTUSDT', 'DOGEUSDT','SHIBUSDT','EOSUSDT')
+    #data = getminutedata_v2(client,p.TRADE_PAIR,interval='5m',lookback='1',daterange= 'days ago UTC')
+    #print (data)
+    engine = create_engine('sqlite:///Cryptoprices.db')
+    if generatedb is True:
+        for coin in tqdm(coins):
+            getminutedata_v2(client,coin,interval='1m',lookback='30',daterange= 'days ago UTC').to_sql(coin,engine,index=False)
+    #print(sql.inspect(engine).get_table_names())
+    test = pd.read_sql('EOSUSDT',engine)
+    print(test)
 def main():
     
     global it
@@ -316,6 +343,9 @@ def main():
     if argv:
         if argv[0] == 'ass':  
             quit()
+
+    backtest(client)
+    #quit()
     #print(client.get_symbol_info(p.TRADE_PAIR))
     #sys.exit()
     #data_mn = getminutedata(client,TRADE_PAIR,interval=INTERVAL,lookback='100')
@@ -376,7 +406,7 @@ def main():
                         "fills": [
                         {"price": curr_price,
                         "qty": qty,
-                        "commission": "4.00000000",
+                        "commission": (curr_price*qty*0.00075),
                         "commissionAsset": "USDT"}]}
                     try:
 
@@ -385,6 +415,7 @@ def main():
                             if order['fills'] != []:
                                 buyprice = float(order['fills'][0]['price'])
                                 qty_exec = order['fills'][0]['qty']
+                                qty_exec = round(qty_exec,8)
                                 fee = order['fills'][0]['commission']
                                 open_position = True
                                 #Time,Side,Amount,Price
@@ -433,7 +464,7 @@ def main():
                                 "fills": [
                                 {"price": curr_price,
                                 "qty": qty,
-                                "commission": "4.00000000",
+                                "commission": (curr_price*qty*0.00075),
                                 "commissionAsset": "USDT"}]
                                 }
                         try:
@@ -469,8 +500,3 @@ def main():
 if __name__ == "__main__":
     main()
     
-    """ try:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        print('Closing the loop!') """
