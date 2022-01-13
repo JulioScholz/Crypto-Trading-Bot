@@ -216,7 +216,7 @@ def getAssets(info):
 
     return table
 
-def send_gsheets(data):
+def send_gsheets(data, debug= False):
     #https://docs.google.com/forms/d/e/1FAIpQLSfiQVw5cvsQUyLoFN5N4O9FnMhDgRc6tY_uamx6raacMPd6wg/viewform?usp=pp_url&entry.708373730=time&entry.1439661015=user&entry.427604541=amount&entry.1842940957=price
     key = '1FAIpQLSfiQVw5cvsQUyLoFN5N4O9FnMhDgRc6tY_uamx6raacMPd6wg'
     keys =['708373730', '1439661015','18808364','425542830','427604541', '1842940957', '1472867978']
@@ -229,7 +229,8 @@ def send_gsheets(data):
         i += 1
 
     r = requests.post(url, params = string)
-    print('Posting order on sheets: ' + str(r))
+    if debug is True:
+        print('Posting order on sheets: ' + str(r))
 
 def build_dict(data_mn,dDict):
     global it
@@ -334,7 +335,7 @@ def main():
     info = client.get_account()
     assests =  getAssets(info)
     print(assests)
-
+    profit = 0
     argv = sys.argv[1:]
     if argv:
         if argv[0] == 'ass':  
@@ -381,7 +382,8 @@ def main():
             else:
                 dDict = {'Position' : '[red]Vendido' }
             dDict = build_dict(data_mn,dDict)
-            print_all(dDict,run_time='Running for ' + str((datetime.now() - inicio )).split('.')[0])
+            if p.BACKTEST is False:
+                print_all(dDict,run_time='Running for ' + str((datetime.now() - inicio )).split('.')[0])
             #save_dict_as_json(dDict)
             result = float(dDict['RESULT'])
             if result <= p.BUY_THRESHOLD and open_position is False:
@@ -422,8 +424,9 @@ def main():
                                 fee = order['fills'][0]['commission']
                                 open_position = True
                                 #Time,Side,Amount,Price
-                                fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'BUY', str(qty_exec),'-' + str(buyprice), str(fee)]
-                                send_gsheets(fields)
+                                if p.BACKTEST is False:
+                                    fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'BUY', str(qty_exec),'-' + str(buyprice), str(fee)]
+                                    send_gsheets(fields)
                                 its = 5
                     except Exception as e:
                         print(e)
@@ -432,18 +435,19 @@ def main():
                 #df = getminutedata(client,TRADE_PAIR,'1m', lookback='2')
                 df = data_mn.tail(1)
                 curr_price =float(df.Close.iloc[-1] )
-                if its % 5 == 0:
-                    ot_table = Table()
-                    
-                    ot_table.add_column('[blue]Close')
-                    ot_table.add_column('[cyan]Buy Price')
-                    ot_table.add_column('[green]Target')
-                    ot_table.add_column('[red]Stop')
-                    ot_table.add_row(str(curr_price),str(buyprice),str(buyprice * p.STOP_GAIN),str(buyprice * p.STOP_LOSS) )
-                    
-                    print_all(ot_table,False)
-                    its = 0
-                its = its + 1
+                if p.BACKTEST is False:
+                    if its % 5 == 0:
+                        ot_table = Table()
+                        
+                        ot_table.add_column('[blue]Close')
+                        ot_table.add_column('[cyan]Buy Price')
+                        ot_table.add_column('[green]Target')
+                        ot_table.add_column('[red]Stop')
+                        ot_table.add_row(str(curr_price),str(buyprice),str(buyprice * p.STOP_GAIN),str(buyprice * p.STOP_LOSS) )
+                        
+                        print_all(ot_table,False)
+                        its = 0
+                    its = its + 1
                 if result > p.SELL_THRESHOLD or curr_price <= buyprice * p.STOP_LOSS or curr_price >= p.STOP_GAIN * buyprice:
                     if p.TEST_REAL is False:
                         print("ALERTA VOU COMPRAR!")
@@ -476,23 +480,23 @@ def main():
                             sellprice = float(order['fills'][0]['price'])
                             qty_exec = order['fills'][0]['qty']
                             fee = order['fills'][0]['commission']
-                            profit = sellprice - buyprice
+                            profit += sellprice - buyprice
                             print(f'Profit: {profit}')
                             #Time,Side,Amount,Price
-                            fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'SELL', str(qty_exec), str(sellprice), str(fee)]
-                            send_gsheets(fields)
+                            if p.BACKTEST is False:
+                                fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'SELL', str(qty_exec), str(sellprice), str(fee)]
+                                send_gsheets(fields)
                             open_position = False
                         except Exception as e:
                             print(e)
-
-            if it % 30 == 0:
-                p = para()
 
             if keyboard.is_pressed('Esc'):
                 print("\nyou pressed Esc, so exiting...")
                 keep_runnig = False
 
             if p.BACKTEST is False:
+                if it % 30 == 0:
+                    p = para()
                 if open_position is True:
                     time.sleep(5)
                 else:
