@@ -232,19 +232,21 @@ def send_gsheets(data, debug= False):
     if debug is True:
         print('Posting order on sheets: ' + str(r))
 
-def build_dict(data_mn,dDict):
+def strategy(data_mn,dDict):
     global it
     it += 1
     start = datetime.now() 
     #data_mn = getminutedata(TRADE_PAIR)
     
-    votes = 0 
+    votes = 0
+    weights = 0 
     dDict = {'Time':datetime.now().strftime("%Y-%m-%d %H:%M:%S"),**dDict}
     close = data_mn.tail(1).to_numpy()[0,0]
     
     #RSI - Relative Strength Index
-    rsi_df = pta.rsi(data_mn['Close'], length = p.RSI_LENGTH)
-    last_rsi = rsi_df[-1]
+    if p.RSI_WEIGHT > 0:
+        rsi_df = pta.rsi(data_mn['Close'], length = p.RSI_LENGTH)
+        last_rsi = rsi_df[-1]
     
     #SMA - Simple Moving Average
     """ df_sma20 = pta.sma(data_mn["Close"], length = 20)
@@ -253,54 +255,70 @@ def build_dict(data_mn,dDict):
     last_sma50 = df_sma50[-1]
     sma = last_sma20 - last_sma50 """
     
-    #BBANDS - Bollinger Bands
-    df_bbands = pta.bbands(data_mn["Close"], length = p.BBAND_LENGTH, mamode=p.BBAND_MAMODE,std= p.BBAND_STD)
-    #BBL_20_2.0  BBM_20_2.0  BBU_20_2.0  BBB_20_2.0
+    
 
     # MACD_12_26_9  MACDh_12_26_9  MACDs_12_26_9
-    #df_macd = pta.macd(data_mn["Close"])
-        #get last macd signal
-    #macds_last = (df_macd['MACDs_'+str(MACD_FAST)+'_'+str(MACD_SLOW)+'_'+str(MACD_SIGNAL)])[-1]
-        #get last but one macd signal
-    #macds_last1 = (df_macd['MACDs_'+str(MACD_FAST)+'_'+str(MACD_SLOW)+'_'+str(MACD_SIGNAL)])[df_macd.shape[0]-2]
+    if p.MACD_WEIGHT > 0:
+        res_macd = -1
+        df_macd = pta.macd(data_mn["Close"],p.MACD_FAST,p.MACD_SLOW,p.MACD_SIGNAL)
+        #pta.macd()
+            #get last macd signal
+        column_name = 'MACDh_'+str(p.MACD_FAST)+'_'+str(p.MACD_SLOW)+'_'+str(p.MACD_SIGNAL)
+        macd_last = df_macd[column_name][-1]
+            #get last but one macd signal
+        macd_last1 = df_macd[column_name][df_macd.shape[0]-2]
+        #sell
+        if macd_last1 >= 0 and macd_last < 0:
+            res_macd = 1
+        #buy
+        if macd_last1 < 0 and macd_last >= 0:
+            res_macd = 0
+        
+            
 
     #STOCH - Stochastic Oscillator
-    df_stoch = pta.stoch(data_mn["High"],data_mn["Low"],data_mn["Close"],p.STOCH_K,p.STOCH_D)
-    last_STOCH_D = (df_stoch['STOCHd_'+str(p.STOCH_K)+'_'+str(p.STOCH_D)+'_'+str(p.STOCH_SMOOTH_K)])[-1]
-    last_STOCH_K = (df_stoch['STOCHk_'+str(p.STOCH_K)+'_'+str(p.STOCH_D)+'_'+str(p.STOCH_SMOOTH_K)])[-1]
-    
-    bbands_pp =  (df_bbands.iloc[-1].to_dict())['BBP_'+str(p.BBAND_LENGTH)+'_'+str(p.BBAND_STD)]
+    if p.STOCH_WEIGHT > 0 :
+        df_stoch = pta.stoch(data_mn["High"],data_mn["Low"],data_mn["Close"],p.STOCH_K,p.STOCH_D)
+        last_STOCH_D = (df_stoch['STOCHd_'+str(p.STOCH_K)+'_'+str(p.STOCH_D)+'_'+str(p.STOCH_SMOOTH_K)])[-1]
+        last_STOCH_K = (df_stoch['STOCHk_'+str(p.STOCH_K)+'_'+str(p.STOCH_D)+'_'+str(p.STOCH_SMOOTH_K)])[-1]
+        res_stoch = (last_STOCH_D+last_STOCH_K)/200
 
-    #resultado estiver proximo a 1 - compra é recomendado
-    #resultado estiver proximo a 0 - venda é recomendado
-    """ if last_rsi > RSI_OVERBOUGHT:
-        last_rsi = 0
-    if last_rsi < RSI_OVERSOLD:
-        last_rsi = 1 """
+    if p.BBAND_WEIGHT > 0 :
+        #BBANDS - Bollinger Bands
+        df_bbands = pta.bbands(data_mn["Close"], length = p.BBAND_LENGTH, mamode=p.BBAND_MAMODE,std= p.BBAND_STD)
+        #BBL_20_2.0  BBM_20_2.0  BBU_20_2.0  BBB_20_2.0
+        bbands_pp =  (df_bbands.iloc[-1].to_dict())['BBP_'+str(p.BBAND_LENGTH)+'_'+str(p.BBAND_STD)]
 
-    res_stoch = (last_STOCH_D+last_STOCH_K)/200
-    """ if last_STOCH_D > STOCH_OVERBOUGHT and last_STOCH_K >  STOCH_OVERBOUGHT:
-        res_stoch = 0
-    if last_STOCH_D < STOCH_OVERSOLD and last_STOCH_K < STOCH_OVERSOLD:
-        res_stoch = 1 """
-
-    votes += (last_rsi / 100) *p.RSI_WEIGHT
-    votes += (bbands_pp) *p.BBAND_WEIGHT
-    votes += res_stoch  *p.STOCH_WEIGHT
-    #last_STOCH_K = df_stoch
-    result = votes / (p.RSI_WEIGHT + p.BBAND_WEIGHT + p.STOCH_WEIGHT)
-    
     dDict = {**dDict, 'Close': close}
-    dDict = {**dDict, 'RSI': last_rsi}
+    
+    if p.RSI_WEIGHT > 0 :
+        votes += (last_rsi / 100) * p.RSI_WEIGHT
+        dDict = {**dDict, 'RSI': last_rsi}
+   
+    if p.BBAND_WEIGHT > 0 :   
+        votes += (bbands_pp) * p.BBAND_WEIGHT
+        dDict = {**dDict, 'BBAND': bbands_pp }
+
+    if p.STOCH_WEIGHT > 0 :
+        votes += res_stoch  * p.STOCH_WEIGHT
+        dDict = {**dDict, 'STOCH': res_stoch}
+        dDict = {**dDict , 'STOCH D': last_STOCH_D}
+        dDict = {**dDict, 'STOCH K': last_STOCH_K}
+    if p.MACD_WEIGHT:
+        dDict = {**dDict, 'MACD': res_macd}
+        if res_macd != -1:
+            votes += res_macd * p.MACD_WEIGHT
+            weights +=  p.MACD_WEIGHT 
+        #dDict = {**dDict, 'MACD Last but one': macds_last1}
+        #dDict = {**dDict, 'MACD Last': macds_last}
+    weights += p.RSI_WEIGHT + p.BBAND_WEIGHT + p.STOCH_WEIGHT 
+    result = votes / weights
+    
+    
     #dDict = {**dDict, 'SMA 20': last_sma20}
     #dDict = {**dDict, 'SMA 50': last_sma50}
-    dDict = {**dDict, 'STOCH': res_stoch}
-    #dDict = {**dDict, 'MACD Last but one': macds_last1}
-    #dDict = {**dDict, 'MACD Last': macds_last}
-    dDict = {**dDict, 'BBAND': bbands_pp }
     #dDict = {**dDict, 'SMA DIF': sma}
-    dDict = {**dDict, 'STOCH D': last_STOCH_D}
-    dDict = {**dDict, 'STOCH K': last_STOCH_K}
+    
     dDict = {**dDict, 'RESULT': result}
 
     newdict = {}
@@ -309,7 +327,6 @@ def build_dict(data_mn,dDict):
             newdict[x] = round(dDict[x],3)
         else:
             newdict[x] = dDict[x]
-
 
     return newdict
 
@@ -366,7 +383,6 @@ def main():
     #orders = client.get_open_orders()
 
     open_position = False
-    decide =  False
     keep_runnig = True
 
     #await deu_mierda(client)
@@ -374,10 +390,10 @@ def main():
         while keep_runnig is True:
            
             if p.BACKTEST is False:
-                data_mn = getminutedata(client,p.TRADE_PAIR,interval='5m',lookback='100')
+                data_mn = getminutedata(client,p.TRADE_PAIR,interval=p.INTERVAL,lookback='80')
                 if data_mn is None :
                     client = setup_client()
-                    data_mn = getminutedata(client,p.TRADE_PAIR,interval='5m',lookback='100')
+                    data_mn = getminutedata(client,p.TRADE_PAIR,interval=p.INTERVAL,lookback='80')
                     if data_mn is None:
                         break;
             elif p.BACKTEST is True:
@@ -393,7 +409,8 @@ def main():
                 dDict = {'Position' : '[green]Comprado' }
             else:
                 dDict = {'Position' : '[red]Vendido' }
-            dDict = build_dict(data_mn,dDict)
+            dDict = strategy(data_mn,dDict)
+          
             if p.BACKTEST is False:
                 print_all(dDict,run_time='Running for ' + str((datetime.now() - inicio )).split('.')[0])
             #save_dict_as_json(dDict)
@@ -441,8 +458,11 @@ def main():
                                 if p.BACKTEST is False:
                                     fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'BUY', str(qty_exec),'-' + str(buyprice), str(fee)]
                                     send_gsheets(fields)
+                                else:
+                                    dDict['Position'] = "[green]Buying"
+                                    print_all(dDict,run_time='Running for ' + str((datetime.now() - inicio )).split('.')[0])
                                 its = 5
-
+                        #print
                                
                     except Exception as e:
                         print(e)
@@ -497,11 +517,15 @@ def main():
                             p.set_ava_money(p.AVAILABLE_MONEY + ((sellprice*qty_exec) - (buyprice*qty )) - fee)
                             profit =  p.AVAILABLE_MONEY  - start_money
                             operacao += 1
-                            print(f'it: {it}. op {operacao}. Profit: {profit} - Av Money: {p.AVAILABLE_MONEY}')
+                           
 
                             if p.BACKTEST is False:
                                 fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'SELL', str(qty_exec), str(sellprice), str(fee)]
                                 send_gsheets(fields)
+                            else:
+                                dDict['Position'] = "[red]Selling"
+                                print_all(dDict,run_time='Running for ' + str((datetime.now() - inicio )).split('.')[0])
+                                print(f'it: {it}. op {operacao}. Profit: {profit} - Av Money: {p.AVAILABLE_MONEY}')
                             open_position = False
                         except Exception as e:
                             print(e)
