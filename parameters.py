@@ -4,11 +4,12 @@ import configparser, pathlib
 class paraClass:
     def __init__(self):
         config = configparser.ConfigParser()
-        config.read_file( open(str(  pathlib.Path(__file__).parent.resolve())  +  '\config.ini') )
+        config.read_file( open(str(  pathlib.Path(__file__).parent.resolve())  + pathlib.os.sep + 'config.ini') )
 
         P = 'PARAMETERS'
         self.TEST =         bool(config['APP'].getboolean('TEST'))
         self.TEST_REAL =    bool(config['APP'].getboolean('TEST_REAL'))
+        self.DEBUG_BACKTEST =     bool(config['APP'].getboolean('DEBUG_BACKTEST'))
         self.BACKTEST =     bool(config['APP'].getboolean('BACKTEST'))
         self.USER =         config['APP']['USER']
         self.INTERVAL =     config['APP']['INTERVAL']

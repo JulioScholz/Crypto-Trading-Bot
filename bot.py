@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pandas_ta as pta
 
-import json, configparser, pathlib, time, requests, copy, sys, os, keyboard
+import json, configparser, pathlib, time, requests, copy, sys, os, keyboard, socket
 from tqdm import tqdm
 from parameters import paraClass as para
 from configupdater import ConfigUpdater
@@ -15,6 +15,10 @@ from rich.live import Live
 from rich.align import Align
 #import sqlalchemy as sql
 from sqlalchemy import create_engine
+
+
+## printing the hostname and ip_address
+
 def eula():
 
     print(  "\nDeclaração de exoneração de responsabilidade\n\n" +
@@ -27,11 +31,15 @@ def eula():
     #    sys.exit()
 
 eula()
-print(os.getlogin() + ' - ' + os.environ['COMPUTERNAME'])
+
+hostname = socket.gethostname()
+ip_address = socket.gethostbyname( hostname )
+print(os.getlogin() + ' - ' + hostname + ' - ' +  ip_address)
+
 it = 0
 pathConf = str(  pathlib.Path(__file__).parent.resolve())   
 updater = ConfigUpdater()
-updater.read(pathConf+  '\config.ini')
+updater.read(pathConf+ os.sep + 'config.ini')
 p = para()
 client = None
 
@@ -39,7 +47,7 @@ client = None
 def setup_client():
 
     configKeys = configparser.ConfigParser()
-    configKeys.read_file(open( str(pathlib.Path(__file__).parent.resolve()) + '\secret.ini'))
+    configKeys.read_file(open( str(pathlib.Path(__file__).parent.resolve()) + os.sep + 'secret.ini'))
     actual_api_key = configKeys.get('BINANCE', 'ACTUAL_API_KEY')
     actual_secret_key = configKeys.get('BINANCE', 'ACTUAL_SECRET_KEY')
     test_api_key = configKeys.get('BINANCE', 'TEST_API_KEY')
@@ -304,14 +312,22 @@ def strategy(data_mn,dDict):
         dDict = {**dDict, 'STOCH': res_stoch}
         dDict = {**dDict , 'STOCH D': last_STOCH_D}
         dDict = {**dDict, 'STOCH K': last_STOCH_K}
-    if p.MACD_WEIGHT:
+
+    if p.MACD_WEIGHT > 0:
         dDict = {**dDict, 'MACD': res_macd}
         if res_macd != -1:
             votes += res_macd * p.MACD_WEIGHT
-            weights +=  p.MACD_WEIGHT 
+            weights +=  p.MACD_WEIGHT
+        else:
+            if votes == 0:
+                votes = res_macd
+         
         #dDict = {**dDict, 'MACD Last but one': macds_last1}
         #dDict = {**dDict, 'MACD Last': macds_last}
-    weights += p.RSI_WEIGHT + p.BBAND_WEIGHT + p.STOCH_WEIGHT 
+    weights += p.RSI_WEIGHT + p.BBAND_WEIGHT + p.STOCH_WEIGHT
+
+    if weights == 0:
+        weights = 1
     result = votes / weights
     
     
@@ -390,14 +406,14 @@ def main():
         while keep_runnig is True:
            
             if p.BACKTEST is False:
-                data_mn = getminutedata(client,p.TRADE_PAIR,interval=p.INTERVAL,lookback='80')
+                data_mn = getminutedata(client,p.TRADE_PAIR,interval=p.INTERVAL,lookback='40')
                 if data_mn is None :
                     client = setup_client()
                     data_mn = getminutedata(client,p.TRADE_PAIR,interval=p.INTERVAL,lookback='80')
                     if data_mn is None:
                         break;
             elif p.BACKTEST is True:
-                data_mn = dataTest.iloc[it:it+50]
+                data_mn = dataTest.iloc[it:it+40]
                 
             curr_price = float(data_mn['Close'].iloc[-1])
             qty = p.AVAILABLE_MONEY / curr_price
@@ -415,7 +431,7 @@ def main():
                 print_all(dDict,run_time='Running for ' + str((datetime.now() - inicio )).split('.')[0])
             #save_dict_as_json(dDict)
             result = float(dDict['RESULT'])
-            if result <= p.BUY_THRESHOLD and open_position is False:
+            if result <= p.BUY_THRESHOLD and result >= 0 and open_position is False:
                 qty = p.AVAILABLE_MONEY / float(curr_price)
                 qty = round(qty,8)
                 
@@ -451,14 +467,13 @@ def main():
                                 buyprice = float(order['fills'][0]['price'])
                                 qty_exec = order['fills'][0]['qty']
                                 qty_exec = round(qty_exec,8)
-                                fee = order['fills'][0]['commission']
-                                profit = profit - fee
+                                buy_fee = order['fills'][0]['commission']
                                 open_position = True
                                 #Time,Side,Amount,Price
                                 if p.BACKTEST is False:
                                     fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'BUY', str(qty_exec),'-' + str(buyprice), str(fee)]
                                     send_gsheets(fields)
-                                else:
+                                elif p.BACKTEST is True and p.DEBUG_BACKTEST is True:
                                     dDict['Position'] = "[green]Buying"
                                     print_all(dDict,run_time='Running for ' + str((datetime.now() - inicio )).split('.')[0])
                                 its = 5
@@ -509,11 +524,12 @@ def main():
                         
                             sellprice = float(order['fills'][0]['price'])
                             qty_exec = order['fills'][0]['qty']
-                            fee = order['fills'][0]['commission']
+                            sell_fee = order['fills'][0]['commission']
                             
                             #profit += ((sellprice*qty_exec) - (buyprice*qty )) - fee
                             
                             #p.set_ava_money((sellprice*qty_exec))
+                            fee = buy_fee + sell_fee 
                             p.set_ava_money(p.AVAILABLE_MONEY + ((sellprice*qty_exec) - (buyprice*qty )) - fee)
                             profit =  p.AVAILABLE_MONEY  - start_money
                             operacao += 1
@@ -522,10 +538,10 @@ def main():
                             if p.BACKTEST is False:
                                 fields = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"),p.USER,p.TRADE_PAIR,'SELL', str(qty_exec), str(sellprice), str(fee)]
                                 send_gsheets(fields)
-                            else:
+                            elif p.BACKTEST is True and p.DEBUG_BACKTEST is True:
                                 dDict['Position'] = "[red]Selling"
                                 print_all(dDict,run_time='Running for ' + str((datetime.now() - inicio )).split('.')[0])
-                                print(f'it: {it}. op {operacao}. Profit: {profit} - Av Money: {p.AVAILABLE_MONEY}')
+                            print(f'it: {it}. op {operacao}. Profit: {profit} - Av Money: {p.AVAILABLE_MONEY}')
                             open_position = False
                         except Exception as e:
                             print(e)
@@ -533,6 +549,9 @@ def main():
             if keyboard.is_pressed('Esc'):
                 print("\nyou pressed Esc, so exiting...")
                 keep_runnig = False
+
+            if keyboard.is_pressed('p'):
+                input("Paused, insert enter to continue...")
 
             if p.BACKTEST is False:
                 if it % 30 == 0:
