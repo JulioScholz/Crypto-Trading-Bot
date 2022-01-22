@@ -18,7 +18,7 @@ class paraClass:
         self.STOP_LOSS =    float(config['APP']['STOP_LOSS'])
         self.STOP_GAIN =    float(config['APP']['STOP_GAIN'])
 
-        self.TRADE_COIN =   config['ASSESTS']['TRADE_COIN'] 
+        self.TRADE_COIN =   config['ASSESTS']['TRADE_COIN']
         self.TRADE_MONEY =  config['ASSESTS']['TRADE_MONEY']
         self.TRADE_PAIR =   self.TRADE_COIN + self.TRADE_MONEY
         self.AVAILABLE_MONEY = float(config['ASSESTS']['AVAILABLE_MONEY'])
@@ -30,7 +30,7 @@ class paraClass:
 
         self.BBAND_LENGTH =  int(config[P]['BBAND_LENGTH'] )
         self.BBAND_STD =     float(config[P]['BBAND_STD'])
-        self.BBAND_MAMODE=   config[P]['BBAND_MAMODE'] 
+        self.BBAND_MAMODE=   config[P]['BBAND_MAMODE']
         self.BBAND_WEIGHT =  float(config[P]['BBAND_WEIGHT'] )
 
         self.STOCH_K =       int(config[P]['STOCH_K'] )
